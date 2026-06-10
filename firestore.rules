@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owner(data) { return signedIn() && data.userId == request.auth.uid; }
+    function validExtension(value) { return value in ['pdf', 'docx']; }
+    function validCreate() {
+      return request.resource.data.keys().hasAll([
+        'userId', 'originalName', 'originalExtension', 'outputExtension',
+        'originalStoragePath', 'outputStoragePath', 'originalSize', 'outputSize',
+        'status', 'provider', 'providerJobId', 'errorCode', 'errorMessage',
+        'attemptCount', 'createdAt', 'updatedAt', 'completedAt', 'expiresAt'
+      ])
+      && request.resource.data.keys().hasOnly([
+        'userId', 'originalName', 'originalExtension', 'outputExtension',
+        'originalStoragePath', 'outputStoragePath', 'originalSize', 'outputSize',
+        'status', 'provider', 'providerJobId', 'errorCode', 'errorMessage',
+        'attemptCount', 'createdAt', 'updatedAt', 'completedAt', 'expiresAt'
+      ])
+      && owner(request.resource.data)
+      && request.resource.data.originalName is string
+      && request.resource.data.originalName.size() <= 255
+      && validExtension(request.resource.data.originalExtension)
+      && validExtension(request.resource.data.outputExtension)
+      && request.resource.data.originalExtension != request.resource.data.outputExtension
+      && request.resource.data.originalSize is int
+      && request.resource.data.originalSize > 0
+      && request.resource.data.originalSize <= 20 * 1024 * 1024
+      && request.resource.data.status == 'uploading'
+      && request.resource.data.originalStoragePath == ''
+      && request.resource.data.outputStoragePath == null
+      && request.resource.data.outputSize == null
+      && request.resource.data.providerJobId == null
+      && request.resource.data.attemptCount == 0;
+    }
+    function validClientUploadUpdate() {
+      return owner(resource.data)
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['originalStoragePath', 'status', 'updatedAt'])
+      && request.resource.data.originalStoragePath.matches('users/' + request.auth.uid + '/conversions/' + resource.id + '/original/[^/]+')
+      && request.resource.data.status in ['uploading', 'queued']
+      && resource.data.status == 'uploading';
+    }
+
+    match /conversions/{conversionId} {
+      allow read: if owner(resource.data);
+      allow create: if validCreate();
+      allow update: if validClientUploadUpdate();
+      allow delete: if owner(resource.data) && resource.data.status != 'processing';
+    }
+  }
+}

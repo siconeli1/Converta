@@ -1,0 +1,5 @@
+import { SiteHeader } from "@/components/layout/site-header";
+
+export default function PrivacyPage() {
+  return <><SiteHeader /><main className="legal"><h1>Privacidade</h1><p>Última atualização: 10 de junho de 2026.</p><h2>Dados utilizados</h2><p>O Converta usa os dados básicos da conta Google para autenticação e armazena metadados das conversões. O conteúdo dos documentos não deve ser registrado em logs.</p><h2>Processamento de arquivos</h2><p>Os documentos são enviados ao Firebase Storage e encaminhados temporariamente ao CloudConvert para conversão. Esse terceiro processa o conteúdo segundo seus próprios termos e políticas.</p><h2>Retenção e exclusão</h2><p>A retenção planejada é de sete dias. Você pode excluir manualmente a qualquer momento pelo histórico. A limpeza automática requer uma rotina agendada antes do uso em produção.</p><h2>Segurança</h2><p>Arquivos ficam em caminhos privados por usuário e downloads usam links temporários. Não alegamos certificações ou garantias além dos controles efetivamente configurados.</p></main></>;
+}

@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedInAs(uid) { return request.auth != null && request.auth.uid == uid; }
+    function validUpload() {
+      return request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType in [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+    }
+    match /users/{uid}/conversions/{conversionId}/original/{fileName} {
+      allow read: if signedInAs(uid);
+      allow create: if signedInAs(uid) && validUpload();
+      allow update: if false;
+      allow delete: if signedInAs(uid);
+    }
+    match /users/{uid}/conversions/{conversionId}/output/{fileName} {
+      allow read, write: if false;
+    }
+  }
+}
