@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { upload } from "@vercel/blob/client";
+import { put } from "@vercel/blob/client";
 import { ArrowRight, FileUp, Trash2 } from "lucide-react";
 import { addDoc, collection, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -61,13 +61,35 @@ export function Uploader() {
       const safeName = sanitizeFileName(file.name);
       const path = `users/${user.uid}/conversions/${documentRef.id}/original/${safeName}`;
       const token = await user.getIdToken();
-      const blob = await upload(path, file, {
+      const multipart = file.size > 5 * 1024 * 1024;
+      const uploadAuthorization = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "blob.generate-client-token",
+          payload: {
+            pathname: path,
+            clientPayload: JSON.stringify({ conversionId: documentRef.id }),
+            multipart,
+          },
+        }),
+      });
+      const authorization = await uploadAuthorization.json() as {
+        clientToken?: string;
+        error?: string;
+      };
+      if (!uploadAuthorization.ok || !authorization.clientToken) {
+        throw new Error(authorization.error || "UPLOAD_TOKEN_FAILED");
+      }
+
+      const blob = await put(path, file, {
         access: "private",
-        handleUploadUrl: "/api/upload",
-        clientPayload: JSON.stringify({ conversionId: documentRef.id }),
-        headers: { Authorization: `Bearer ${token}` },
+        token: authorization.clientToken,
         contentType: file.type,
-        multipart: file.size > 5 * 1024 * 1024,
+        multipart,
         onUploadProgress: ({ percentage }) => setProgress(Math.round(percentage)),
       });
       await updateDoc(documentRef, {
@@ -79,8 +101,19 @@ export function Uploader() {
       if (!response.ok) throw new Error("PROCESS_FAILED");
       setFile(null);
       setProgress(0);
-    } catch {
-      setError("Não foi possível enviar ou processar o arquivo. A conversão pode ser tentada novamente pelo histórico.");
+    } catch (conversionError) {
+      console.error("Conversion failed", conversionError);
+      const message = conversionError instanceof Error ? conversionError.message : "";
+      const errors: Record<string, string> = {
+        BLOB_NOT_CONFIGURED: "O armazenamento de arquivos ainda não está conectado ao ambiente deste deploy.",
+        AUTH_INVALID: "Sua sessão não pôde ser validada. Saia da conta, entre novamente e tente outra vez.",
+        UPLOAD_FORBIDDEN: "Este envio não foi autorizado. Atualize a página e tente novamente.",
+        UPLOAD_INVALID: "Os dados deste envio são inválidos. Selecione o arquivo novamente.",
+        UPLOAD_TOKEN_FAILED: "O serviço de armazenamento recusou o envio. Consulte os Runtime Logs da Vercel.",
+        PROCESS_FAILED: "O arquivo foi enviado, mas a conversão não pôde ser concluída.",
+      };
+      const code = Object.keys(errors).find((candidate) => message.includes(candidate));
+      setError(code ? errors[code] : "Não foi possível enviar ou processar o arquivo. Tente novamente.");
     } finally {
       setBusy(false);
     }

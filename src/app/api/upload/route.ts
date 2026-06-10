@@ -7,6 +7,10 @@ import type { ConversionDocument } from "@/types/conversion";
 
 export async function POST(request: Request) {
   try {
+    if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.BLOB_STORE_ID) {
+      throw new Error("BLOB_NOT_CONFIGURED");
+    }
+
     const body = (await request.json()) as HandleUploadBody;
     const result = await handleUpload({
       request,
@@ -47,7 +51,30 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(result);
-  } catch {
-    return NextResponse.json({ error: "Upload não autorizado." }, { status: 400 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "UNKNOWN_UPLOAD_ERROR";
+    console.error("[api/upload] failed", {
+      message,
+      hasBlobToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+      hasBlobStoreId: Boolean(process.env.BLOB_STORE_ID),
+      hasAdminProject: Boolean(process.env.FIREBASE_ADMIN_PROJECT_ID),
+      hasAdminEmail: Boolean(process.env.FIREBASE_ADMIN_CLIENT_EMAIL),
+      hasAdminKey: Boolean(process.env.FIREBASE_ADMIN_PRIVATE_KEY),
+    });
+
+    const code =
+      message === "BLOB_NOT_CONFIGURED" ||
+      message.includes("BLOB_READ_WRITE_TOKEN") ||
+      message.includes("blob credentials")
+        ? "BLOB_NOT_CONFIGURED"
+        : message === "UNAUTHENTICATED"
+          ? "AUTH_INVALID"
+          : message === "FORBIDDEN"
+            ? "UPLOAD_FORBIDDEN"
+            : message === "INVALID_UPLOAD"
+              ? "UPLOAD_INVALID"
+              : "UPLOAD_TOKEN_FAILED";
+
+    return NextResponse.json({ error: code }, { status: 400 });
   }
 }

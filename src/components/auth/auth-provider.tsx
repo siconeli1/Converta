@@ -42,7 +42,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     login: async () => {
       const { auth } = getFirebaseClient();
       await setPersistence(auth, browserLocalPersistence);
-      await signInWithPopup(auth, new GoogleAuthProvider());
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      await signInWithPopup(auth, provider);
     },
     logout: async () => signOut(getFirebaseClient().auth),
   }), [loading, user]);
