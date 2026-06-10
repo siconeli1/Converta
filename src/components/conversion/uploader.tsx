@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { put } from "@vercel/blob/client";
-import { ArrowRight, FileUp, Trash2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Download, FileUp, RotateCcw, Trash2 } from "lucide-react";
 import { addDoc, collection, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getFirebaseClient } from "@/lib/firebase/client";
@@ -17,11 +17,17 @@ export function Uploader() {
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [completed, setCompleted] = useState<{
+    id: string;
+    name: string;
+    outputExtension: string;
+  } | null>(null);
   const maxSize = Number(process.env.NEXT_PUBLIC_MAX_FILE_SIZE_MB || 20);
   const validation = file ? validateFileMetadata(file, maxSize) : null;
 
   function choose(nextFile?: File) {
     setError("");
+    setCompleted(null);
     if (!nextFile) return;
     const result = validateFileMetadata(nextFile, maxSize);
     if (!result.valid) {
@@ -30,6 +36,35 @@ export function Uploader() {
       return;
     }
     setFile(nextFile);
+  }
+
+  function resetSelection() {
+    setFile(null);
+    setProgress(0);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  async function downloadCompleted() {
+    if (!user || !completed) return;
+    const token = await user.getIdToken();
+    const response = await fetch(`/api/conversions/${completed.id}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      setError("O download não pôde ser iniciado. Tente novamente pelo histórico.");
+      return;
+    }
+
+    const output = await response.blob();
+    const url = URL.createObjectURL(output);
+    const link = document.createElement("a");
+    const disposition = response.headers.get("content-disposition");
+    link.href = url;
+    link.download =
+      disposition?.match(/filename="([^"]+)"/)?.[1] ||
+      `${completed.name}.${completed.outputExtension}`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function convert() {
@@ -99,8 +134,12 @@ export function Uploader() {
       });
       const response = await fetch(`/api/conversions/${documentRef.id}/process`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error("PROCESS_FAILED");
-      setFile(null);
-      setProgress(0);
+      setCompleted({
+        id: documentRef.id,
+        name: file.name.replace(/\.[^.]+$/, ""),
+        outputExtension: validation.outputExtension,
+      });
+      resetSelection();
     } catch (conversionError) {
       console.error("Conversion failed", conversionError);
       const message = conversionError instanceof Error ? conversionError.message : "";
@@ -142,7 +181,7 @@ export function Uploader() {
         <div className="file-preview">
           <div className="file-row">
             <div className="file-main"><span className="file-icon">{validation?.valid ? validation.extension.toUpperCase() : "?"}</span><div><div className="file-name">{file.name}</div><div className="file-meta">{formatBytes(file.size)}</div></div></div>
-            <button className="icon-button" title="Remover arquivo" aria-label="Remover arquivo" disabled={busy} onClick={() => { setFile(null); setProgress(0); }}><Trash2 size={18} /></button>
+            <button className="icon-button" title="Remover arquivo" aria-label="Remover arquivo" disabled={busy} onClick={resetSelection}><Trash2 size={18} /></button>
           </div>
           {validation?.valid && <div className="conversion-direction"><span>{validation.extension.toUpperCase()}</span><ArrowRight size={18} /><span>{getOutputExtension(validation.extension).toUpperCase()}</span></div>}
           {busy && <div className="progress-track" aria-label={`Progresso: ${progress}%`}><div className="progress-bar" style={{ width: `${progress || 8}%` }} /></div>}
@@ -150,6 +189,23 @@ export function Uploader() {
         </div>
       )}
       {error && <p className="error-text" role="alert" style={{ padding: "0 22px 18px" }}>{error}</p>}
+      {completed && (
+        <div className="conversion-success" role="status">
+          <span className="success-icon"><CheckCircle2 size={24} /></span>
+          <div className="success-copy">
+            <strong>Documento convertido com sucesso</strong>
+            <span>Seu arquivo {completed.outputExtension.toUpperCase()} está pronto para baixar.</span>
+          </div>
+          <div className="success-actions">
+            <button className="button button-primary" onClick={downloadCompleted}>
+              <Download size={18} /> Baixar arquivo
+            </button>
+            <button className="icon-button" title="Converter outro arquivo" aria-label="Converter outro arquivo" onClick={() => setCompleted(null)}>
+              <RotateCcw size={18} />
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
