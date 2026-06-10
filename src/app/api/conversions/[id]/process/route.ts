@@ -1,3 +1,4 @@
+import { get, put } from "@vercel/blob";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/server";
@@ -16,7 +17,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { id } = await context.params;
     if (!/^[A-Za-z0-9_-]{6,128}$/.test(id)) return NextResponse.json({ error: "ID inválido." }, { status: 400 });
 
-    const { db, bucket } = getFirebaseAdmin();
+    const { db } = getFirebaseAdmin();
     const reference = db.collection("conversions").doc(id);
     const claimed = await db.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(reference);
@@ -36,15 +37,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return data;
     });
 
-    const sourceFile = bucket.file(claimed.originalStoragePath);
-    const [exists] = await sourceFile.exists();
-    if (!exists) throw new Error("SOURCE_MISSING");
-    const [sourceUrl] = await sourceFile.getSignedUrl({ action: "read", expires: Date.now() + 15 * 60 * 1000 });
+    const sourceBlob = await get(claimed.originalStoragePath, { access: "private" });
+    if (!sourceBlob) throw new Error("SOURCE_MISSING");
+    const source = Buffer.from(await new Response(sourceBlob.stream).arrayBuffer());
 
     const outputName = buildOutputName(claimed.originalName);
     const provider = getConversionProvider();
     const result = await provider.convert({
-      sourceUrl,
+      source,
+      sourceName: claimed.originalName,
       inputFormat: claimed.originalExtension,
       outputFormat: claimed.outputExtension,
       outputName,
@@ -53,15 +54,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!outputResponse.ok) throw new ConversionProviderError("PROVIDER_DOWNLOAD_FAILED", "Falha ao obter o arquivo convertido.");
     const output = Buffer.from(await outputResponse.arrayBuffer());
     const outputPath = `users/${user.uid}/conversions/${id}/output/${outputName}`;
-    await bucket.file(outputPath).save(output, {
-      resumable: false,
-      metadata: { contentType: claimed.outputExtension === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+    const outputBlob = await put(outputPath, output, {
+      access: "private",
+      addRandomSuffix: false,
+      contentType: claimed.outputExtension === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
     await reference.update({
       status: "completed",
       provider: provider.name,
       providerJobId: result.jobId,
-      outputStoragePath: outputPath,
+      outputStoragePath: outputBlob.pathname,
       outputSize: output.length,
       completedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),

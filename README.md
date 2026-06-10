@@ -7,11 +7,11 @@ Web app para converter DOCX em PDF e PDF em DOCX, com autenticação Google, arq
 ```mermaid
 flowchart LR
   U[Next.js no navegador] -->|Google Login| A[Firebase Auth]
-  U -->|upload direto| S[Firebase Storage]
+  U -->|upload direto e privado| S[Vercel Blob]
   U -->|metadados e onSnapshot| F[Cloud Firestore]
   U -->|ID token + conversion ID| V[Route Handler na Vercel]
   V -->|verifica token e propriedade| Admin[Firebase Admin]
-  V -->|URL assinada temporária| C[CloudConvert]
+  V -->|upload autenticado| C[CloudConvert]
   C -->|arquivo convertido| V
   V -->|salva resultado privado| S
   V -->|atualiza status| F
@@ -21,9 +21,9 @@ O arquivo original não atravessa o corpo da Function. Isso evita o limite de pa
 
 ## Decisão do provedor
 
-O adapter inicial é o **CloudConvert**. Ele suporta DOCX → PDF e PDF → DOCX, jobs assíncronos, importação por URL e exportação temporária. O plano gratuito informa até 10 conversões por dia.
+O adapter inicial é o **CloudConvert**. Ele suporta DOCX → PDF e PDF → DOCX, jobs assíncronos, upload privado e exportação temporária.
 
-O **ConvertAPI** também suporta os dois sentidos e é uma alternativa viável. CloudConvert foi escolhido porque seu modelo de jobs com `import/url` combina melhor com upload direto ao Firebase Storage e Functions da Vercel.
+O **ConvertAPI** também suporta os dois sentidos e é uma alternativa viável. CloudConvert foi escolhido pelo modelo de jobs e pelo SDK oficial para Node.js.
 
 O contrato `ConversionProvider` isola o fornecedor em `src/lib/conversion`. A chave fica exclusivamente no servidor.
 
@@ -36,7 +36,8 @@ O contrato `ConversionProvider` isola o fornecedor em `src/lib/conversion`. A ch
 
 - Next.js 16, React 19 e TypeScript
 - Tailwind CSS 4
-- Firebase Auth, Firestore, Storage e Admin SDK
+- Firebase Auth, Firestore e Admin SDK
+- Vercel Blob privado
 - CloudConvert API v2
 - Vitest
 - Vercel
@@ -58,21 +59,25 @@ Abra `http://localhost:3000`.
 1. Crie um projeto no [Firebase Console](https://console.firebase.google.com/).
 2. Em **Authentication > Sign-in method**, ative Google.
 3. Crie o Firestore em modo de produção.
-4. Ative o Storage e escolha uma região próxima dos usuários.
-5. Registre um Web App e copie os valores públicos para `.env.local`.
-6. Em **Project settings > Service accounts**, gere uma chave para o Admin SDK.
-7. Cadastre `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL` e `FIREBASE_ADMIN_PRIVATE_KEY`.
-8. Publique regras e índices:
+4. Registre um Web App e copie os valores públicos para `.env.local`.
+5. Em **Project settings > Service accounts**, gere uma chave para o Admin SDK.
+6. Cadastre `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL` e `FIREBASE_ADMIN_PRIVATE_KEY`.
+7. Publique regras e índices:
 
 ```bash
 npx firebase-tools login
 npx firebase-tools use --add
-npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage
+npx firebase-tools deploy --only firestore:rules,firestore:indexes
 ```
 
 Na Vercel, mantenha a chave privada em uma única linha, com quebras representadas por `\n`. O código converte essas sequências de volta para quebras reais.
 
 Adicione `localhost` e o domínio final da Vercel em **Authentication > Settings > Authorized domains**.
+
+## Configuração do Vercel Blob
+
+Crie uma Blob Store privada conectada ao projeto Vercel. A variável
+`BLOB_READ_WRITE_TOKEN` é adicionada automaticamente aos ambientes conectados.
 
 ## Configuração do CloudConvert
 
@@ -96,7 +101,6 @@ O limite padrão é 20 MB e deve permanecer igual em:
 - `NEXT_PUBLIC_MAX_FILE_SIZE_MB`
 - `CONVERSION_MAX_FILE_SIZE_MB`
 - `firestore.rules`
-- `storage.rules`
 
 ## Segurança
 
@@ -115,7 +119,7 @@ As regras permitem ao cliente somente criar a conversão e concluir a etapa de u
 
 ## Retenção
 
-O documento recebe `expiresAt` sete dias após a conclusão e pode ser excluído manualmente no dashboard. Para produção, configure uma rotina diária (Vercel Cron ou Cloud Scheduler) que consulte `expiresAt <= now`, remova os dois arquivos e apague o documento. Não ative TTL do Firestore sozinho: ele não exclui objetos do Storage.
+O documento recebe `expiresAt` sete dias após a conclusão e pode ser excluído manualmente no dashboard. Para produção, configure uma rotina diária que consulte `expiresAt <= now`, remova os dois blobs e apague o documento.
 
 ## Testes
 
@@ -125,7 +129,7 @@ npm test
 npm run build
 ```
 
-Os testes cobrem validação, tamanho, nomes de saída, transições, prevenção de reprocessamento e adapter do provider. O `firebase.json` prepara Auth, Firestore e Storage Emulator para uma futura suíte de regras.
+Os testes cobrem validação, tamanho, nomes de saída, transições, prevenção de reprocessamento e adapter do provider.
 
 ## Deploy na Vercel
 

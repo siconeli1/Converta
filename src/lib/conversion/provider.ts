@@ -1,7 +1,8 @@
 import type { FileExtension } from "@/types/conversion";
 
 export interface ConversionInput {
-  sourceUrl: string;
+  source: Buffer;
+  sourceName: string;
   inputFormat: FileExtension;
   outputFormat: FileExtension;
   outputName: string;

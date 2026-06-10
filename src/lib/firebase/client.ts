@@ -3,7 +3,6 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 
 const config = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -19,5 +18,5 @@ export const isFirebaseConfigured = Boolean(config.apiKey && config.projectId &&
 export function getFirebaseClient() {
   if (!isFirebaseConfigured) throw new Error("Firebase client is not configured");
   const app = getApps().length ? getApp() : initializeApp(config);
-  return { app, auth: getAuth(app), db: getFirestore(app), storage: getStorage(app) };
+  return { app, auth: getAuth(app), db: getFirestore(app) };
 }

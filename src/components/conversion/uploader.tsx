@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { upload } from "@vercel/blob/client";
 import { ArrowRight, FileUp, Trash2 } from "lucide-react";
 import { addDoc, collection, serverTimestamp, updateDoc } from "firebase/firestore";
-import { ref, uploadBytesResumable } from "firebase/storage";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getFirebaseClient } from "@/lib/firebase/client";
 import { formatBytes, sanitizeFileName } from "@/lib/utils";
@@ -37,7 +37,7 @@ export function Uploader() {
     setBusy(true);
     setError("");
     try {
-      const { db, storage } = getFirebaseClient();
+      const { db } = getFirebaseClient();
       const documentRef = await addDoc(collection(db, "conversions"), {
         userId: user.uid,
         originalName: file.name,
@@ -60,13 +60,21 @@ export function Uploader() {
       });
       const safeName = sanitizeFileName(file.name);
       const path = `users/${user.uid}/conversions/${documentRef.id}/original/${safeName}`;
-      await updateDoc(documentRef, { originalStoragePath: path });
-      await new Promise<void>((resolve, reject) => {
-        const task = uploadBytesResumable(ref(storage, path), file, { contentType: file.type });
-        task.on("state_changed", (snapshot) => setProgress(Math.round(snapshot.bytesTransferred / snapshot.totalBytes * 100)), reject, resolve);
-      });
-      await updateDoc(documentRef, { status: "queued", updatedAt: serverTimestamp() });
       const token = await user.getIdToken();
+      const blob = await upload(path, file, {
+        access: "private",
+        handleUploadUrl: "/api/upload",
+        clientPayload: JSON.stringify({ conversionId: documentRef.id }),
+        headers: { Authorization: `Bearer ${token}` },
+        contentType: file.type,
+        multipart: file.size > 5 * 1024 * 1024,
+        onUploadProgress: ({ percentage }) => setProgress(Math.round(percentage)),
+      });
+      await updateDoc(documentRef, {
+        originalStoragePath: blob.pathname,
+        status: "queued",
+        updatedAt: serverTimestamp(),
+      });
       const response = await fetch(`/api/conversions/${documentRef.id}/process`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error("PROCESS_FAILED");
       setFile(null);

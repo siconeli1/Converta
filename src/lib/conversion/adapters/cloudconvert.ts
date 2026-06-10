@@ -1,3 +1,5 @@
+import CloudConvert from "cloudconvert";
+import { Readable } from "node:stream";
 import {
   ConversionProviderError,
   type ConversionInput,
@@ -5,29 +7,19 @@ import {
   type ConversionResult,
 } from "@/lib/conversion/provider";
 
-type CloudConvertJob = {
-  id: string;
-  status: string;
-  message?: string;
-  tasks: Array<{
-    name: string;
-    result?: { files?: Array<{ url: string }> };
-  }>;
-};
-
 export class CloudConvertProvider implements ConversionProvider {
   readonly name = "cloudconvert";
-  private readonly baseUrl = "https://api.cloudconvert.com/v2";
+  private readonly client: CloudConvert;
 
-  constructor(private readonly apiKey: string) {}
+  constructor(apiKey: string) {
+    this.client = new CloudConvert(apiKey);
+  }
 
   async convert(input: ConversionInput): Promise<ConversionResult> {
-    const response = await fetch(`${this.baseUrl}/jobs`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      let job = await this.client.jobs.create({
         tasks: {
-          "import-file": { operation: "import/url", url: input.sourceUrl },
+          "import-file": { operation: "import/upload" },
           "convert-file": {
             operation: "convert",
             input: "import-file",
@@ -37,20 +29,43 @@ export class CloudConvertProvider implements ConversionProvider {
           },
           "export-file": { operation: "export/url", input: "convert-file", inline: false },
         },
-      }),
-    });
-    if (!response.ok) throw new ConversionProviderError("PROVIDER_CREATE_FAILED", "Não foi possível iniciar a conversão.");
-    const created = (await response.json()) as { data: CloudConvertJob };
-    const wait = await fetch(`${this.baseUrl}/jobs/${created.data.id}/wait`, {
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-    });
-    if (!wait.ok) throw new ConversionProviderError("PROVIDER_WAIT_FAILED", "O provedor não concluiu a conversão.");
-    const job = ((await wait.json()) as { data: CloudConvertJob }).data;
-    if (job.status !== "finished") {
-      throw new ConversionProviderError("PROVIDER_JOB_FAILED", job.message || "A conversão falhou no provedor.");
+      });
+
+      const uploadTask = job.tasks.find((task) => task.name === "import-file");
+      if (!uploadTask) {
+        throw new ConversionProviderError("PROVIDER_UPLOAD_MISSING", "O provedor não preparou o envio.");
+      }
+
+      await this.client.tasks.upload(
+        uploadTask,
+        Readable.from(input.source),
+        input.sourceName,
+        input.source.length,
+      );
+      job = await this.client.jobs.wait(job.id);
+
+      if (job.status !== "finished") {
+        throw new ConversionProviderError(
+          "PROVIDER_JOB_FAILED",
+          "A conversão falhou no provedor.",
+        );
+      }
+
+      const file = this.client.jobs.getExportUrls(job)[0];
+      if (!file?.url) {
+        throw new ConversionProviderError(
+          "PROVIDER_OUTPUT_MISSING",
+          "O arquivo convertido não foi retornado.",
+        );
+      }
+
+      return { jobId: job.id, downloadUrl: file.url };
+    } catch (error) {
+      if (error instanceof ConversionProviderError) throw error;
+      throw new ConversionProviderError(
+        "PROVIDER_CREATE_FAILED",
+        "Não foi possível concluir a conversão.",
+      );
     }
-    const file = job.tasks.find((task) => task.name === "export-file")?.result?.files?.[0];
-    if (!file?.url) throw new ConversionProviderError("PROVIDER_OUTPUT_MISSING", "O arquivo convertido não foi retornado.");
-    return { jobId: job.id, downloadUrl: file.url };
   }
 }

@@ -39,7 +39,17 @@ export function History({ onCounts }: { onCounts?: (total: number, completed: nu
   async function download(id: string) {
     setActionId(id);
     const response = await authorizedFetch(`/api/conversions/${id}/download`);
-    if (response?.ok) window.location.assign((await response.json()).url);
+    if (response?.ok) {
+      const file = await response.blob();
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      const disposition = response.headers.get("content-disposition");
+      const fileName = disposition?.match(/filename="([^"]+)"/)?.[1];
+      link.href = url;
+      link.download = fileName || "arquivo-convertido";
+      link.click();
+      URL.revokeObjectURL(url);
+    }
     setActionId("");
   }
   async function retry(id: string) {
