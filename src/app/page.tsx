@@ -21,7 +21,7 @@ export default function Home() {
             <div className="hero-note">
               <span><Check size={15} /> Gratuito para começar</span>
               <span><LockKeyhole size={15} /> Arquivos privados</span>
-              <span><Clock3 size={15} /> Armazenamento temporário</span>
+              <span><Clock3 size={15} /> Exclusão após 7 dias</span>
             </div>
           </div>
           <div className="hero-image">
@@ -52,7 +52,7 @@ export default function Home() {
               <div className="benefit"><span className="benefit-icon"><Upload size={20} /></span><div><h3>Upload direto</h3><p>Arquivos grandes não passam pelo corpo da aplicação, reduzindo falhas no envio.</p></div></div>
               <div className="benefit"><span className="benefit-icon"><Download size={20} /></span><div><h3>Histórico útil</h3><p>Encontre, baixe novamente ou exclua cada conversão em poucos cliques.</p></div></div>
               <div className="benefit"><span className="benefit-icon"><ShieldCheck size={20} /></span><div><h3>Acesso protegido</h3><p>As regras vinculam documentos e arquivos à conta autenticada.</p></div></div>
-              <div className="benefit"><span className="benefit-icon"><LockKeyhole size={20} /></span><div><h3>Privacidade clara</h3><p>Arquivos privados, exclusão manual e armazenamento temporário.</p></div></div>
+              <div className="benefit"><span className="benefit-icon"><LockKeyhole size={20} /></span><div><h3>Privacidade clara</h3><p>Arquivos privados, exclusão manual e limpeza automática programada.</p></div></div>
             </div>
           </div>
         </section>

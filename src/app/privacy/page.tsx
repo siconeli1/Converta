@@ -35,7 +35,7 @@ const sections = [
     title: "Retenção e exclusão",
     content: (
       <>
-        <p>Os documentos são destinados a armazenamento temporário. A retenção recomendada é de até sete dias após a conclusão da conversão.</p>
+        <p>Os documentos são destinados a armazenamento temporário. A exclusão automática é programada para depois de sete dias da conclusão ou falha da conversão.</p>
         <p>Você pode excluir uma conversão a qualquer momento pelo histórico. Essa ação remove os arquivos associados e o respectivo registro operacional.</p>
       </>
     ),

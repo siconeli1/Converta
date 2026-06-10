@@ -119,7 +119,17 @@ As regras permitem ao cliente somente criar a conversão e concluir a etapa de u
 
 ## Retenção
 
-O documento recebe `expiresAt` sete dias após a conclusão e pode ser excluído manualmente no dashboard. Para produção, configure uma rotina diária que consulte `expiresAt <= now`, remova os dois blobs e apague o documento.
+O documento recebe `expiresAt` sete dias após a conclusão ou falha e pode ser excluído manualmente no dashboard. O Vercel Cron chama diariamente `/api/cron/cleanup`, remove os blobs vencidos e apaga seus documentos do Firestore.
+
+Defina um valor aleatório e longo para `CRON_SECRET` na Vercel. A plataforma envia esse segredo no cabeçalho `Authorization` ao executar o Cron.
+
+## Monitoramento
+
+- `/api/health` confirma publicamente que a aplicação está online.
+- Com `Authorization: Bearer HEALTHCHECK_SECRET`, a mesma rota valida Firestore e a configuração de Blob e CloudConvert.
+- Erros de servidor são gravados como JSON nos Runtime Logs da Vercel.
+- `ERROR_WEBHOOK_URL` é opcional e encaminha os mesmos erros para um endpoint externo.
+- Vercel Web Analytics e Speed Insights acompanham acesso e Core Web Vitals.
 
 ## Testes
 

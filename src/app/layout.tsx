@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
 
@@ -12,6 +14,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="pt-BR">
       <body>
         <AuthProvider>{children}</AuthProvider>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

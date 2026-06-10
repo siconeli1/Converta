@@ -2,6 +2,7 @@ import { get } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/server";
 import { getFirebaseAdmin } from "@/lib/firebase/admin";
+import { reportError } from "@/lib/observability";
 import { buildOutputName } from "@/lib/validation/file";
 import type { ConversionDocument } from "@/types/conversion";
 
@@ -24,7 +25,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         "Cache-Control": "private, no-store",
       },
     });
-  } catch {
+  } catch (error) {
+    await reportError(error, { route: "/api/conversions/[id]/download" });
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 }

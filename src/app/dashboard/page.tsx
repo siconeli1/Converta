@@ -38,7 +38,7 @@ export default function DashboardPage() {
           <aside className="panel">
             <div className="panel-head"><h2>Resumo</h2></div>
             <div className="stat-list"><div className="stat"><span>Conversões recentes</span><strong>{counts.total}</strong></div><div className="stat"><span>Concluídas</span><strong>{counts.completed}</strong></div><div className="stat"><span>Formatos</span><strong>2</strong></div></div>
-            <div className="privacy-note"><strong>Seus arquivos são privados.</strong><br />Exclua quando quiser. O Converta não deve ser usado como armazenamento permanente.</div>
+            <div className="privacy-note"><strong>Seus arquivos são privados.</strong><br />Exclua quando quiser. A limpeza automática é programada após sete dias.</div>
           </aside>
         </div>
         <History onCounts={handleCounts} />

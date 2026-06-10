@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth/server";
 import { getConversionProvider } from "@/lib/conversion/get-provider";
 import { ConversionProviderError } from "@/lib/conversion/provider";
 import { getFirebaseAdmin } from "@/lib/firebase/admin";
+import { reportError } from "@/lib/observability";
 import { buildOutputName, validateFileMetadata } from "@/lib/validation/file";
 import type { ConversionDocument } from "@/types/conversion";
 
@@ -81,8 +82,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           errorCode: error instanceof ConversionProviderError ? error.code : "PROCESSING_FAILED",
           errorMessage: error instanceof ConversionProviderError ? error.message : "Não foi possível concluir a conversão.",
           updatedAt: FieldValue.serverTimestamp(),
+          expiresAt: Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000),
         });
       } catch {}
+      await reportError(error, {
+        route: "/api/conversions/[id]/process",
+        status,
+      });
     }
     return NextResponse.json({ error: status === 409 ? "Esta conversão já está em andamento." : status < 500 ? "Acesso negado." : "Não foi possível concluir a conversão." }, { status });
   }

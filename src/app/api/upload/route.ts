@@ -2,6 +2,7 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/server";
 import { getFirebaseAdmin } from "@/lib/firebase/admin";
+import { reportError } from "@/lib/observability";
 import { MIME_TYPES } from "@/lib/validation/file";
 import type { ConversionDocument } from "@/types/conversion";
 
@@ -53,7 +54,8 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN_UPLOAD_ERROR";
-    console.error("[api/upload] failed", {
+    await reportError(error, {
+      route: "/api/upload",
       message,
       hasBlobToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
       hasBlobStoreId: Boolean(process.env.BLOB_STORE_ID),

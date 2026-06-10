@@ -1,7 +1,8 @@
-import { del } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/server";
+import { deleteConversion } from "@/lib/conversion/delete-conversion";
 import { getFirebaseAdmin } from "@/lib/firebase/admin";
+import { reportError } from "@/lib/observability";
 import type { ConversionDocument } from "@/types/conversion";
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -13,11 +14,10 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const snapshot = await reference.get();
     const conversion = snapshot.data() as Omit<ConversionDocument, "id"> | undefined;
     if (!conversion || conversion.userId !== user.uid) return NextResponse.json({ error: "Não encontrado." }, { status: 404 });
-    const paths = [conversion.originalStoragePath, conversion.outputStoragePath].filter(Boolean) as string[];
-    if (paths.length) await del(paths);
-    await reference.delete();
+    await deleteConversion(reference, conversion);
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (error) {
+    await reportError(error, { route: "/api/conversions/[id]", operation: "delete" });
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 }
