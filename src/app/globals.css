@@ -106,6 +106,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .panel-head h2 { margin: 0; font-size: 18px; }
 .upload-zone { margin: 22px; min-height: 260px; display: grid; place-items: center; border: 2px dashed #aeb9c8; background: #fbfcfe; padding: 26px; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; }
 .upload-zone[data-active="true"] { border-color: var(--blue); background: #f1f5ff; }
+.upload-zone[data-disabled="true"] { cursor: not-allowed; border-style: solid; border-color: #d4dae3; background: #f3f5f7; color: #737d8c; }
+.upload-zone[data-disabled="true"] svg { color: #8c96a5 !important; }
 .upload-zone h3 { margin: 16px 0 7px; }
 .upload-zone p { margin: 0; color: var(--muted); }
 .file-preview { margin: 22px; border: 1px solid var(--line); padding: 18px; }
@@ -132,6 +134,13 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .success-copy span { color: #3c6d5b; font-size: 14px; line-height: 1.45; }
 .success-actions { display: flex; align-items: center; gap: 8px; }
 .stat-list { padding: 8px 22px 20px; }
+.quota-summary { margin: 22px 22px 0; padding: 16px; border: 1px solid #cbd8f5; background: #f4f7ff; }
+.quota-summary > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.quota-summary span { color: #294b94; font-size: 14px; font-weight: 700; }
+.quota-summary strong { color: var(--blue); font-size: 30px; line-height: 1; }
+.quota-summary p { margin: 10px 0 0; color: #52698f; font-size: 13px; line-height: 1.45; }
+.quota-meter { height: 6px; margin-top: 13px; overflow: hidden; background: #dce5f8; }
+.quota-meter span { display: block; height: 100%; background: var(--blue); transition: width .25s; }
 .stat { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--line); }
 .stat:last-child { border: 0; }
 .stat strong { font-size: 23px; }

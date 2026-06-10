@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { put } from "@vercel/blob/client";
 import { ArrowRight, CheckCircle2, Download, FileUp, RotateCcw, Trash2 } from "lucide-react";
 import { addDoc, collection, serverTimestamp, updateDoc } from "firebase/firestore";
@@ -8,8 +8,13 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { getFirebaseClient } from "@/lib/firebase/client";
 import { formatBytes, sanitizeFileName } from "@/lib/utils";
 import { getOutputExtension, validateFileMetadata } from "@/lib/validation/file";
+import type { ConversionQuotaStatus } from "@/types/quota";
 
-export function Uploader() {
+interface UploaderProps {
+  onQuotaChange?: (quota: ConversionQuotaStatus | null) => void;
+}
+
+export function Uploader({ onQuotaChange }: UploaderProps) {
   const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -17,17 +22,69 @@ export function Uploader() {
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [quota, setQuota] = useState<ConversionQuotaStatus | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(true);
   const [completed, setCompleted] = useState<{
     id: string;
     name: string;
     outputExtension: string;
   } | null>(null);
-  const maxSize = Number(process.env.NEXT_PUBLIC_MAX_FILE_SIZE_MB || 20);
+  const maxSize = Math.min(Number(process.env.NEXT_PUBLIC_MAX_FILE_SIZE_MB || 10), 10);
   const validation = file ? validateFileMetadata(file, maxSize) : null;
+  const quotaBlocked = quota?.canConvert === false;
+  const quotaBlockTitle = quota?.blockedReason === "RATE_LIMIT"
+    ? "Aguarde um instante"
+    : "Limite gratuito atingido";
+  const quotaBlockDescription = quota?.blockedReason === "RATE_LIMIT"
+    ? "Uma nova conversão será liberada em até um minuto."
+    : "As conversões serão liberadas automaticamente no próximo período.";
+
+  const loadQuota = useCallback(async () => {
+    if (!user) return null;
+    setQuotaLoading(true);
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch("/api/quota", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("QUOTA_UNAVAILABLE");
+      const nextQuota = await response.json() as ConversionQuotaStatus;
+      setQuota(nextQuota);
+      onQuotaChange?.(nextQuota);
+      return nextQuota;
+    } finally {
+      setQuotaLoading(false);
+    }
+  }, [onQuotaChange, user]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      loadQuota().catch(() => {
+        setError("Não foi possível consultar o limite de conversões. Atualize a página.");
+        onQuotaChange?.(null);
+      });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadQuota, onQuotaChange]);
+
+  useEffect(() => {
+    const refreshAt = quota?.nextAllowedAt || quota?.resetAt;
+    if (!refreshAt) return;
+    const delay = Math.max(1000, new Date(refreshAt).getTime() - Date.now() + 1000);
+    const timeout = window.setTimeout(() => {
+      loadQuota().catch(() => undefined);
+    }, Math.min(delay, 2_147_000_000));
+    return () => window.clearTimeout(timeout);
+  }, [loadQuota, quota?.nextAllowedAt, quota?.resetAt]);
 
   function choose(nextFile?: File) {
     setError("");
     setCompleted(null);
+    if (quotaBlocked) {
+      setError("Seu limite gratuito está esgotado no momento.");
+      return;
+    }
     if (!nextFile) return;
     const result = validateFileMetadata(nextFile, maxSize);
     if (!result.valid) {
@@ -72,6 +129,16 @@ export function Uploader() {
     setBusy(true);
     setError("");
     try {
+      const latestQuota = await loadQuota();
+      if (!latestQuota?.canConvert) {
+        throw new Error(
+          latestQuota?.blockedReason === "GLOBAL_LIMIT"
+            ? "GLOBAL_DAILY_LIMIT"
+            : latestQuota?.blockedReason === "USER_LIMIT"
+              ? "USER_DAILY_LIMIT"
+              : "USER_RATE_LIMITED",
+        );
+      }
       const { db } = getFirebaseClient();
       const documentRef = await addDoc(collection(db, "conversions"), {
         userId: user.uid,
@@ -159,12 +226,17 @@ export function Uploader() {
         PROVIDER_RATE_LIMITED: "O serviço de conversão está ocupado. Aguarde alguns minutos e tente novamente.",
         PROVIDER_AUTH_FAILED: "O serviço de conversão precisa ser reconfigurado pelo administrador.",
         PROVIDER_ACCESS_DENIED: "O serviço de conversão não possui as permissões necessárias.",
+        GLOBAL_DAILY_LIMIT: "As conversões gratuitas de hoje terminaram. O limite será renovado automaticamente.",
+        USER_DAILY_LIMIT: "Você já utilizou suas 2 conversões gratuitas de hoje.",
+        USER_RATE_LIMITED: "Aguarde um minuto antes de iniciar outra conversão.",
+        QUOTA_UNAVAILABLE: "Não foi possível consultar o limite de conversões. Atualize a página.",
         PROCESS_FAILED: "O arquivo foi enviado, mas a conversão não pôde ser concluída.",
       };
       const code = Object.keys(errors).find((candidate) => message.includes(candidate));
       setError(code ? errors[code] : "Não foi possível enviar ou processar o arquivo. Tente novamente.");
     } finally {
       setBusy(false);
+      loadQuota().catch(() => undefined);
     }
   }
 
@@ -175,16 +247,22 @@ export function Uploader() {
         <div
           className="upload-zone"
           data-active={dragging}
+          data-disabled={quotaBlocked || quotaLoading}
           role="button"
-          tabIndex={0}
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") inputRef.current?.click(); }}
+          aria-disabled={quotaBlocked || quotaLoading}
+          tabIndex={quotaBlocked || quotaLoading ? -1 : 0}
+          onClick={() => { if (!quotaBlocked && !quotaLoading) inputRef.current?.click(); }}
+          onKeyDown={(event) => { if (!quotaBlocked && !quotaLoading && (event.key === "Enter" || event.key === " ")) inputRef.current?.click(); }}
           onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={() => setDragging(false)}
           onDrop={(event) => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]); }}
         >
-          <div><FileUp size={37} color="#2457d6" aria-hidden="true" /><h3>Arraste seu arquivo aqui</h3><p>ou clique para selecionar PDF ou DOCX, até {maxSize} MB</p></div>
+          <div>
+            <FileUp size={37} color="#2457d6" aria-hidden="true" />
+            <h3>{quotaBlocked ? quotaBlockTitle : "Arraste seu arquivo aqui"}</h3>
+            <p>{quotaBlocked ? quotaBlockDescription : `ou clique para selecionar PDF ou DOCX, até ${maxSize} MB`}</p>
+          </div>
           <input ref={inputRef} hidden type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => choose(event.target.files?.[0])} />
         </div>
       ) : (
@@ -195,7 +273,7 @@ export function Uploader() {
           </div>
           {validation?.valid && <div className="conversion-direction"><span>{validation.extension.toUpperCase()}</span><ArrowRight size={18} /><span>{getOutputExtension(validation.extension).toUpperCase()}</span></div>}
           {busy && <div className="progress-track" aria-label={`Progresso: ${progress}%`}><div className="progress-bar" style={{ width: `${progress || 8}%` }} /></div>}
-          <button className="button button-primary convert-action" disabled={busy || !validation?.valid} onClick={convert}>{busy ? progress < 100 ? `Enviando ${progress}%` : "Convertendo..." : "Converter agora"}</button>
+          <button className="button button-primary convert-action" disabled={busy || quotaBlocked || quotaLoading || !validation?.valid} onClick={convert}>{busy ? progress < 100 ? `Enviando ${progress}%` : "Convertendo..." : "Converter agora"}</button>
         </div>
       )}
       {error && <p className="error-text" role="alert" style={{ padding: "0 22px 18px" }}>{error}</p>}

@@ -4,6 +4,11 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/server";
 import { getConversionProvider } from "@/lib/conversion/get-provider";
 import { ConversionProviderError } from "@/lib/conversion/provider";
+import {
+  claimConversionQuota,
+  ConversionQuotaError,
+  markConversionQuotaExhausted,
+} from "@/lib/conversion/quota";
 import { getFirebaseAdmin } from "@/lib/firebase/admin";
 import { reportError } from "@/lib/observability";
 import { buildOutputName, validateFileMetadata } from "@/lib/validation/file";
@@ -26,8 +31,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const data = snapshot.data() as Omit<ConversionDocument, "id">;
       if (data.userId !== user.uid) throw new Error("FORBIDDEN");
       if (!["queued", "failed"].includes(data.status)) throw new Error("ALREADY_PROCESSING");
-      const validation = validateFileMetadata({ name: data.originalName, size: data.originalSize }, Number(process.env.CONVERSION_MAX_FILE_SIZE_MB || 20));
+      const validation = validateFileMetadata(
+        { name: data.originalName, size: data.originalSize },
+        Math.min(Number(process.env.CONVERSION_MAX_FILE_SIZE_MB || 10), 10),
+      );
       if (!validation.valid) throw new Error("INVALID_FILE");
+      await claimConversionQuota(db, transaction, user.uid);
       transaction.update(reference, {
         status: "processing",
         updatedAt: FieldValue.serverTimestamp(),
@@ -74,29 +83,43 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN";
     const providerError = error instanceof ConversionProviderError ? error : null;
-    const status = message === "UNAUTHENTICATED" ? 401 : message === "FORBIDDEN" ? 403 : message === "NOT_FOUND" ? 404 : message === "ALREADY_PROCESSING" ? 409 : 500;
-    if (status === 500) {
+    const quotaError = error instanceof ConversionQuotaError ? error : null;
+    if (providerError?.code === "PROVIDER_CREDITS_EXCEEDED") {
+      try {
+        await markConversionQuotaExhausted(getFirebaseAdmin().db);
+      } catch (quotaSyncError) {
+        await reportError(quotaSyncError, {
+          route: "/api/conversions/[id]/process",
+          action: "mark-quota-exhausted",
+        });
+      }
+    }
+    const status = message === "UNAUTHENTICATED" ? 401 : message === "FORBIDDEN" ? 403 : message === "NOT_FOUND" ? 404 : message === "ALREADY_PROCESSING" ? 409 : quotaError ? 429 : 500;
+    if (status === 500 || quotaError) {
       try {
         const { id } = await context.params;
         await getFirebaseAdmin().db.collection("conversions").doc(id).update({
           status: "failed",
-          errorCode: providerError?.code || "PROCESSING_FAILED",
-          errorMessage: providerError?.message || "Não foi possível concluir a conversão.",
+          errorCode: quotaError?.code || providerError?.code || "PROCESSING_FAILED",
+          errorMessage: quotaError?.message || providerError?.message || "Não foi possível concluir a conversão.",
           updatedAt: FieldValue.serverTimestamp(),
           expiresAt: Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000),
         });
       } catch {}
-      await reportError(error, {
-        route: "/api/conversions/[id]/process",
-        status,
-      });
+      if (!quotaError) {
+        await reportError(error, {
+          route: "/api/conversions/[id]/process",
+          status,
+        });
+      }
     }
     return NextResponse.json({
-      code: providerError?.code,
+      code: quotaError?.code || providerError?.code,
+      retryAt: quotaError?.retryAt.toISOString(),
       error: status === 409
         ? "Esta conversão já está em andamento."
         : status < 500
-          ? "Acesso negado."
+          ? quotaError?.message || "Acesso negado."
           : providerError?.message || "Não foi possível concluir a conversão.",
     }, { status });
   }

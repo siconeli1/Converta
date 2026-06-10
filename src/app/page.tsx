@@ -38,7 +38,7 @@ export default function Home() {
               <p>O formato de saída é detectado automaticamente. Você acompanha cada etapa e recebe o arquivo assim que ele fica pronto.</p>
             </div>
             <div className="steps">
-              <article className="step"><span className="step-number">01</span><h3>Envie</h3><p>Arraste um PDF ou DOCX de até 20 MB. O upload vai direto para o armazenamento privado.</p></article>
+              <article className="step"><span className="step-number">01</span><h3>Envie</h3><p>Arraste um PDF ou DOCX de até 10 MB. O upload vai direto para o armazenamento privado.</p></article>
               <article className="step"><span className="step-number">02</span><h3>Converta</h3><p>O processamento acontece em um provedor especializado, com status atualizado em tempo real.</p></article>
               <article className="step"><span className="step-number">03</span><h3>Baixe</h3><p>Faça o download imediatamente ou volte ao histórico enquanto o arquivo estiver disponível.</p></article>
             </div>

@@ -96,10 +96,21 @@ As conversões reais só funcionam com essa credencial. O projeto não simula co
 
 Todas estão documentadas em `.env.example`. Variáveis `NEXT_PUBLIC_*` entram no bundle do navegador. Credenciais Admin e do provedor nunca usam esse prefixo.
 
-O limite padrão é 20 MB e deve permanecer igual em:
+O limite padrão é 10 MB e deve permanecer igual em:
 
 - `NEXT_PUBLIC_MAX_FILE_SIZE_MB`
 - `CONVERSION_MAX_FILE_SIZE_MB`
+
+Para preservar o plano gratuito do CloudConvert, a aplicação também aplica uma
+cota atômica no Firestore antes de iniciar cada processamento:
+
+- `CONVERSION_DAILY_GLOBAL_LIMIT=10`: tentativas diárias em todo o serviço.
+- `CONVERSION_DAILY_USER_LIMIT=2`: tentativas diárias por conta.
+- `CONVERSION_COOLDOWN_SECONDS=60`: intervalo mínimo entre tentativas.
+
+As cotas usam dias UTC e são renovadas automaticamente à meia-noite UTC. Os
+documentos internos ficam em `conversionQuotas/{AAAA-MM-DD}` e só podem ser
+acessados pelo Firebase Admin no backend.
 - `firestore.rules`
 
 ## Segurança
@@ -151,7 +162,7 @@ Os testes cobrem validação, tamanho, nomes de saída, transições, prevençã
 6. Atualize `NEXT_PUBLIC_APP_URL` com a URL final e publique novamente.
 7. Valide login, upload nos dois formatos, conclusão, download, retry e exclusão.
 
-O processamento usa `maxDuration = 300`. Confirme que o plano Vercel escolhido suporta essa duração. Arquivos de até 20 MB cabem na memória durante a gravação do resultado, mas conversões maiores devem migrar para um worker dedicado ou exportação direta para armazenamento compatível.
+O processamento usa `maxDuration = 300`. Confirme que o plano Vercel escolhido suporta essa duração. Arquivos de até 10 MB cabem na memória durante a gravação do resultado, mas conversões maiores devem migrar para um worker dedicado ou exportação direta para armazenamento compatível.
 
 ## GitHub
 

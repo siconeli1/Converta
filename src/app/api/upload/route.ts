@@ -40,7 +40,7 @@ export async function POST(request: Request) {
         return {
           allowedContentTypes: [...MIME_TYPES.pdf, ...MIME_TYPES.docx],
           maximumSizeInBytes:
-            Number(process.env.CONVERSION_MAX_FILE_SIZE_MB || 20) * 1024 * 1024,
+            Math.min(Number(process.env.CONVERSION_MAX_FILE_SIZE_MB || 10), 10) * 1024 * 1024,
           addRandomSuffix: false,
           allowOverwrite: false,
           tokenPayload: JSON.stringify({

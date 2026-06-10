@@ -25,7 +25,7 @@ service cloud.firestore {
       && request.resource.data.originalExtension != request.resource.data.outputExtension
       && request.resource.data.originalSize is int
       && request.resource.data.originalSize > 0
-      && request.resource.data.originalSize <= 20 * 1024 * 1024
+      && request.resource.data.originalSize <= 10 * 1024 * 1024
       && request.resource.data.status == 'uploading'
       && request.resource.data.originalStoragePath == ''
       && request.resource.data.outputStoragePath == null
@@ -46,6 +46,10 @@ service cloud.firestore {
       allow create: if validCreate();
       allow update: if validClientUploadUpdate();
       allow delete: if owner(resource.data) && resource.data.status != 'processing';
+    }
+
+    match /conversionQuotas/{day}/{document=**} {
+      allow read, write: if false;
     }
   }
 }
