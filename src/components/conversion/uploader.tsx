@@ -133,7 +133,13 @@ export function Uploader() {
         updatedAt: serverTimestamp(),
       });
       const response = await fetch(`/api/conversions/${documentRef.id}/process`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error("PROCESS_FAILED");
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as {
+          code?: string;
+          error?: string;
+        } | null;
+        throw new Error(result?.code || result?.error || "PROCESS_FAILED");
+      }
       setCompleted({
         id: documentRef.id,
         name: file.name.replace(/\.[^.]+$/, ""),
@@ -149,6 +155,10 @@ export function Uploader() {
         UPLOAD_FORBIDDEN: "Este envio não foi autorizado. Atualize a página e tente novamente.",
         UPLOAD_INVALID: "Os dados deste envio são inválidos. Selecione o arquivo novamente.",
         UPLOAD_TOKEN_FAILED: "O serviço de armazenamento recusou o envio. Consulte os Runtime Logs da Vercel.",
+        PROVIDER_CREDITS_EXCEEDED: "O limite de conversões foi atingido. Tente novamente após a renovação dos créditos.",
+        PROVIDER_RATE_LIMITED: "O serviço de conversão está ocupado. Aguarde alguns minutos e tente novamente.",
+        PROVIDER_AUTH_FAILED: "O serviço de conversão precisa ser reconfigurado pelo administrador.",
+        PROVIDER_ACCESS_DENIED: "O serviço de conversão não possui as permissões necessárias.",
         PROCESS_FAILED: "O arquivo foi enviado, mas a conversão não pôde ser concluída.",
       };
       const code = Object.keys(errors).find((candidate) => message.includes(candidate));

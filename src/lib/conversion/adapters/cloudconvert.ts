@@ -7,6 +7,70 @@ import {
   type ConversionResult,
 } from "@/lib/conversion/provider";
 
+interface CloudConvertErrorBody {
+  code?: string;
+  message?: string;
+}
+
+async function mapCloudConvertError(error: unknown) {
+  const cause = error instanceof Error ? error.cause : undefined;
+  const response = cause instanceof Response ? cause : undefined;
+  let body: CloudConvertErrorBody = {};
+
+  if (response) {
+    try {
+      body = await response.clone().json() as CloudConvertErrorBody;
+    } catch {
+      // Some provider errors do not include a JSON response.
+    }
+  }
+
+  const details = {
+    provider: "cloudconvert",
+    providerStatus: response?.status,
+    providerCode: body.code,
+    providerMessage: body.message,
+  };
+
+  if (response?.status === 402 || body.code === "CREDITS_EXCEEDED") {
+    return new ConversionProviderError(
+      "PROVIDER_CREDITS_EXCEEDED",
+      "O limite de conversões foi atingido. Tente novamente após a renovação dos créditos.",
+      details,
+    );
+  }
+
+  if (response?.status === 401) {
+    return new ConversionProviderError(
+      "PROVIDER_AUTH_FAILED",
+      "O serviço de conversão não está autenticado corretamente.",
+      details,
+    );
+  }
+
+  if (response?.status === 403) {
+    return new ConversionProviderError(
+      "PROVIDER_ACCESS_DENIED",
+      "O serviço de conversão não possui as permissões necessárias.",
+      details,
+    );
+  }
+
+  if (response?.status === 429) {
+    return new ConversionProviderError(
+      "PROVIDER_RATE_LIMITED",
+      "O serviço de conversão está temporariamente ocupado. Tente novamente em alguns minutos.",
+      details,
+    );
+  }
+
+  return new ConversionProviderError(
+    "PROVIDER_CREATE_FAILED",
+    "Não foi possível concluir a conversão.",
+    details,
+  );
+}
+
 export class CloudConvertProvider implements ConversionProvider {
   readonly name = "cloudconvert";
   private readonly client: CloudConvert;
@@ -62,10 +126,7 @@ export class CloudConvertProvider implements ConversionProvider {
       return { jobId: job.id, downloadUrl: file.url };
     } catch (error) {
       if (error instanceof ConversionProviderError) throw error;
-      throw new ConversionProviderError(
-        "PROVIDER_CREATE_FAILED",
-        "Não foi possível concluir a conversão.",
-      );
+      throw await mapCloudConvertError(error);
     }
   }
 }

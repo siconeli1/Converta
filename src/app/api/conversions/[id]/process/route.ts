@@ -73,14 +73,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN";
+    const providerError = error instanceof ConversionProviderError ? error : null;
     const status = message === "UNAUTHENTICATED" ? 401 : message === "FORBIDDEN" ? 403 : message === "NOT_FOUND" ? 404 : message === "ALREADY_PROCESSING" ? 409 : 500;
     if (status === 500) {
       try {
         const { id } = await context.params;
         await getFirebaseAdmin().db.collection("conversions").doc(id).update({
           status: "failed",
-          errorCode: error instanceof ConversionProviderError ? error.code : "PROCESSING_FAILED",
-          errorMessage: error instanceof ConversionProviderError ? error.message : "Não foi possível concluir a conversão.",
+          errorCode: providerError?.code || "PROCESSING_FAILED",
+          errorMessage: providerError?.message || "Não foi possível concluir a conversão.",
           updatedAt: FieldValue.serverTimestamp(),
           expiresAt: Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000),
         });
@@ -90,6 +91,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         status,
       });
     }
-    return NextResponse.json({ error: status === 409 ? "Esta conversão já está em andamento." : status < 500 ? "Acesso negado." : "Não foi possível concluir a conversão." }, { status });
+    return NextResponse.json({
+      code: providerError?.code,
+      error: status === 409
+        ? "Esta conversão já está em andamento."
+        : status < 500
+          ? "Acesso negado."
+          : providerError?.message || "Não foi possível concluir a conversão.",
+    }, { status });
   }
 }

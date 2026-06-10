@@ -19,7 +19,11 @@ export interface ConversionProvider {
 }
 
 export class ConversionProviderError extends Error {
-  constructor(public readonly code: string, message: string) {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly details: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = "ConversionProviderError";
   }

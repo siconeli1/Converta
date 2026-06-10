@@ -70,4 +70,30 @@ describe("CloudConvertProvider", () => {
       outputName: "output.docx",
     })).rejects.toMatchObject({ code: "PROVIDER_CREATE_FAILED" });
   });
+
+  it("identifies exhausted conversion credits", async () => {
+    const response = new Response(JSON.stringify({
+      code: "CREDITS_EXCEEDED",
+      message: "Your account has run out of conversion credits",
+    }), {
+      status: 402,
+      headers: { "Content-Type": "application/json" },
+    });
+    mocks.create.mockRejectedValue(new Error("Payment Required", { cause: response }));
+    const provider = new CloudConvertProvider("secret");
+
+    await expect(provider.convert({
+      source: Buffer.from("x"),
+      sourceName: "input.pdf",
+      inputFormat: "pdf",
+      outputFormat: "docx",
+      outputName: "output.docx",
+    })).rejects.toMatchObject({
+      code: "PROVIDER_CREDITS_EXCEEDED",
+      details: {
+        providerStatus: 402,
+        providerCode: "CREDITS_EXCEEDED",
+      },
+    });
+  });
 });

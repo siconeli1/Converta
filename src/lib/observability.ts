@@ -2,7 +2,17 @@ type LogContext = Record<string, unknown>;
 
 function serializeError(error: unknown) {
   if (error instanceof Error) {
-    return { name: error.name, message: error.message, stack: error.stack };
+    const structured = error as Error & {
+      code?: string;
+      details?: Record<string, unknown>;
+    };
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      code: structured.code,
+      details: structured.details,
+    };
   }
   return { message: String(error) };
 }
